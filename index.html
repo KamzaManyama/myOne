@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Monitoring Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#001435',
+                        secondary: '#0F5EA8',
+                        accent: '#F39C12',
+                        success: '#28a745',
+                        danger: '#dc3545',
+                        warning: '#ffc107',
+                        pending: '#6c757d',
+                        lightbg: '#F8FAFC',
+                        darkbg: '#1E293B',
+                        bordercolor: '#E2E8F0'
+                    },
+                    borderRadius: {
+                        xl: '0.75rem',
+                        '2xl': '1rem',
+                        '3xl': '1.5rem',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .game-image {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 0.375rem;
+        }
+        .status-badge {
+            padding: 0.35rem 0.65rem;
+            border-radius: 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+        }
+        .dropdown-item {
+            transition: all 0.2s ease;
+        }
+        .btn {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .stat-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 50;
+        }
+        .modal.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            border-radius: 0.5rem;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .truncate {
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .status-success {
+            background-color: #10b981;
+            color: white;
+        }
+        .status-failed {
+            background-color: #ef4444;
+            color: white;
+        }
+        .status-pending {
+            background-color: #f59e0b;
+            color: white;
+        }
+        .sidebar-section {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #E2E8F0;
+        }
+        .sidebar-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .table-header {
+            background-color: #F8FAFC;
+        }
+        .table-row:hover {
+            background-color: #F1F5F9;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Professional Header -->
+    <div class="professional-header bg-primary text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex items-center justify-between py-4">
+                <div class="flex items-center space-x-4">
+                    <img src="https://cdn.prod.website-files.com/661f91f5b1381907db771b3c/666aa65fcf37257f4b14ed1f_Screenshot%202024-06-13%20095438.png" alt="Sunbet" class="h-10">
+                    <div class="border-l-2 border-secondary pl-4">
+                        <h1 class="text-xl font-bold">Game Monitoring Dashboard</h1>
+                        <p class="text-gray-200 text-sm">Real-time game management and analytics</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-8xl mx-auto px-6 pb-8 pt-6">
+        <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+            <!-- Sidebar -->
+            <div class="sidebar bg-white rounded-xl shadow-sm border border-bordercolor p-5 h-fit">
+                <!-- File Upload Section -->
+                <div class="sidebar-section">
+                    <h3 class="text-md font-semibold text-gray-800 mb-3 flex items-center">
+                        <i class="fas fa-file-import mr-2 text-secondary"></i>
+                        File Management
+                    </h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center justify-center w-full px-3 py-3 bg-lightbg border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-200">
+                            <div class="text-center">
+                                <i class="fas fa-cloud-upload-alt text-xl text-secondary mb-2"></i>
+                                <p class="text-xs font-medium text-gray-700">Upload Excel File</p>
+                                <p class="text-xs text-gray-500">.xlsx, .xls, .csv</p>
+                                <span id="selectedFileName" class="block text-xs text-secondary mt-1 font-medium"></span>
+                            </div>
+                            <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" class="hidden" onchange="document.getElementById('selectedFileName').textContent = this.files[0] ? this.files[0].name : '';">
+                        </label>
+                        <button id="processFileBtn" class="w-full rounded-md py-2 px-3 font-medium bg-secondary text-white hover:bg-primary transition-colors duration-200 flex items-center justify-center text-sm">
+                            <i class="fas fa-cogs mr-2 text-xs"></i>
+                            Process File
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="sidebar-section">
+                    <h3 class="text-md font-semibold text-gray-800 mb-3 flex items-center">
+                        <i class="fas fa-bolt mr-2 text-secondary"></i>
+                        Quick Actions
+                    </h3>
+                    <div class="space-y-2">
+                        <button id="refreshBtn" class="w-full rounded-md py-2 px-3 font-medium bg-secondary text-white hover:bg-primary transition-colors duration-200 flex items-center justify-center text-sm">
+                            <i class="fas fa-sync-alt mr-2 text-xs"></i>
+                            Refresh Data
+                        </button>
+                        <button id="downloadPDFBtn" class="w-full rounded-md py-2 px-3 font-medium bg-gray-600 text-white hover:bg-gray-700 transition-colors duration-200 flex items-center justify-center text-sm">
+                            <i class="fas fa-download mr-2 text-xs"></i>
+                            Download PDF
+                        </button>
+                        <div class="relative w-full">
+                            <button id="resetServerBtn" class="w-full rounded-md py-2 px-3 font-medium bg-danger text-white hover:bg-red-700 transition-colors duration-200 flex items-center justify-center text-sm">
+                                <i class="fas fa-power-off mr-2 text-xs"></i>
+                                Reset Server
+                            </button>
+                            <div id="resetSpinner" class="hidden absolute right-3 top-1/2 transform -translate-y-1/2">
+                                <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Game Loading Section -->
+                <div id="gameLoadingSection" class="sidebar-section hidden">
+                    <h3 class="text-md font-semibold text-gray-800 mb-3 flex items-center">
+                        <i class="fas fa-gamepad mr-2 text-secondary"></i>
+                        Game Loading
+                    </h3>
+                    <div class="flex flex-col items-center justify-center bg-lightbg border border-bordercolor rounded-lg p-3 space-y-2">
+                        <img id="gameImage" src="" alt="" class="hidden w-24 h-24 rounded-md object-cover">
+                        <h4 id="gameName" class="text-sm font-medium text-gray-700 text-center"></h4>
+                        <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                            <div id="loaderBar" class="bg-secondary h-full transition-all duration-500" style="width: 0%;"></div>
+                        </div>
+                        <p id="loaderPercentage" class="text-xs font-medium text-gray-700">0%</p>
+                    </div>
+                </div>
+
+                <!-- Games List Section -->
+                <div id="gamesList" class="space-y-3"></div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="main-content space-y-6">
+                <!-- Statistics Overview -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                    <div class="stat-card bg-white rounded-lg shadow-sm p-5 border border-bordercolor">
+                        <div class="flex items-center">
+                            <div class="p-2 rounded-full bg-blue-100 text-secondary">
+                                <i class="fas fa-gamepad text-lg"></i>
+                            </div>
+                            <div class="ml-3">
+                                <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Games</h2>
+                                <p id="totalGames" class="text-xl font-semibold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <div class="stat-card bg-white rounded-lg shadow-sm p-5 border border-bordercolor">
+                        <div class="flex items-center">
+                            <div class="p-2 rounded-full bg-green-100 text-success">
+                                <i class="fas fa-check-circle text-lg"></i>
+                            </div>
+                            <div class="ml-3">
+                                <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Launched Games</h2>
+                                <p id="launchedGames" class="text-xl font-semibold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <div class="stat-card bg-white rounded-lg shadow-sm p-5 border border-bordercolor">
+                        <div class="flex items-center">
+                            <div class="p-2 rounded-full bg-red-100 text-danger">
+                                <i class="fas fa-times-circle text-lg"></i>
+                            </div>
+                            <div class="ml-3">
+                                <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Failed Games</h2>
+                                <p id="failedGames" class="text-xl font-semibold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <div class="stat-card bg-white rounded-lg shadow-sm p-5 border border-bordercolor">
+                        <div class="flex items-center">
+                            <div class="p-2 rounded-full bg-yellow-100 text-warning">
+                                <i class="fas fa-clock text-lg"></i>
+                            </div>
+                            <div class="ml-3">
+                                <h2 class="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending Games</h2>
+                                <p id="pendingGames" class="text-xl font-semibold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="bg-white rounded-lg shadow-sm p-5 border border-bordercolor">
+                    <h2 class="text-md font-semibold text-gray-800 mb-3">Filters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div>
+                            <label for="gameNameFilter" class="block text-xs font-medium text-gray-600 mb-1">Game Name</label>
+                            <input type="text" id="gameNameFilter" placeholder="Search games..." class="w-full px-3 py-2 text-sm border border-bordercolor rounded-md focus:outline-none focus:ring-1 focus:ring-secondary transition-colors">
+                        </div>
+                        <div>
+                            <label for="providerFilter" class="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+                            <select id="providerFilter" class="w-full px-3 py-2 text-sm border border-bordercolor rounded-md focus:outline-none focus:ring-1 focus:ring-secondary transition-colors">
+                                <option value="">All Providers</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="categoryFilter" class="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                            <select id="categoryFilter" class="w-full px-3 py-2 text-sm border border-bordercolor rounded-md focus:outline-none focus:ring-1 focus:ring-secondary transition-colors">
+                                <option value="">All Categories</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="statusFilter" class="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                            <select id="statusFilter" class="w-full px-3 py-2 text-sm border border-bordercolor rounded-md focus:outline-none focus:ring-1 focus:ring-secondary transition-colors">
+                                <option value="">All Statuses</option>
+                                <option value="success">Launched</option>
+                                <option value="failed">Failed</option>
+                                <option value="pending">Pending</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button id="applyFilters" class="w-full px-3 py-2 text-sm bg-secondary text-white rounded-md hover:bg-primary focus:outline-none focus:ring-1 focus:ring-secondary transition-colors">
+                                Apply Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+        
+                <!-- Games Table -->
+                <div class="bg-white rounded-lg shadow-sm overflow-hidden border border-bordercolor">
+                    <div class="px-5 py-3 border-b border-bordercolor table-header">
+                        <h2 class="text-md font-semibold text-gray-800">Games Management</h2>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="table-header">
+                                <tr>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gamesTableBody" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="7" class="px-4 py-6 text-sm text-gray-500 text-center">
+                                        <div class="flex flex-col items-center py-4">
+                                            <i class="fas fa-gamepad text-3xl text-gray-300 mb-2"></i>
+                                            <p class="text-gray-400">No games loaded. Upload an Excel file to get started.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                          
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-sm p-5 m-4 max-w-sm w-full transform transition-all border border-bordercolor">
+            <div class="text-center">
+                <div class="bg-red-100 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-exclamation-triangle text-danger text-xl"></i>
+                </div>
+                <h3 class="text-md font-bold text-gray-900 mb-2">Confirm Server Reset</h3>
+                <p class="text-gray-600 text-sm mb-4">This will clear all test data, statistics, and reset the server to its initial state. This action cannot be undone.</p>
+                <div class="flex space-x-2">
+                    <button id="cancelReset" 
+                            class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-3 rounded-md text-sm transition-colors">
+                        Cancel
+                    </button>
+                    <button id="confirmReset" 
+                            class="flex-1 bg-danger hover:bg-red-700 text-white font-medium py-2 px-3 rounded-md text-sm transition-colors">
+                        Reset Server
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Preview Modal -->
+    <div id="gamePreviewModal" class="modal">
+        <div class="modal-content">
+            <div class="p-5 border-b border-bordercolor">
+                <div class="flex justify-between items-center">
+                    <h3 id="previewGameTitle" class="text-lg font-semibold text-gray-800">Game Preview</h3>
+                    <button onclick="hideGamePreviewModal()" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="p-5">
+                <div class="mb-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                        <h4 class="text-xs font-medium text-gray-500 mb-1">Provider</h4>
+                        <p id="previewGameProvider" class="text-sm text-gray-800">Unknown</p>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-medium text-gray-500 mb-1">Category</h4>
+                        <p id="previewGameCategory" class="text-sm text-gray-800">General</p>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-medium text-gray-500 mb-1">Status</h4>
+                        <p id="previewGameStatus" class="text-sm text-gray-800">Unknown</p>
+                    </div>
+                </div>
+                <div id="gameScreenshotContainer" class="mb-3">
+                    <h4 class="text-xs font-medium text-gray-500 mb-2">Game Screenshot</h4>
+                    <img id="gameScreenshot" class="w-full max-h-80 object-contain border border-bordercolor rounded" src="" alt="Game Screenshot">
+                </div>
+                <iframe id="gameIframe" class="w-full h-80 border border-bordercolor rounded" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- =============================================================================================================================================================== -->
+    <!-- GAME DASH SCRIPT -->
+    <!-- =============================================================================================================================================================== -->
+      
+        <script src="newScript.js"></script>
+        
+    <!-- =============================================================================================================================================================== -->
+    <!-- =============================================================================================================================================================== -->
+
+
+
+     
+</body>
+</html>
